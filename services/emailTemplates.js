@@ -274,6 +274,27 @@ const passwordResetTemplate = (resetUrl) =>
     `,
   });
 
+const staffInviteTemplate = ({ inviterName, inviteUrl }) =>
+  buildEmailLayout({
+    preheaderText: `${inviterName} invited you to join their EventHub workspace.`,
+    eyebrow: 'Team invite',
+    title: 'You have been invited as Event Staff',
+    headerTone: 'primary',
+    bodyHtml: `
+      ${paragraph(`Hi there,`)}
+      ${paragraph(`<strong style="color:${BRAND.ink};font-weight:600;">${escapeHtml(inviterName)}</strong> invited you to join their EventHub workspace as <strong style="color:${BRAND.ink};font-weight:600;">Event Staff</strong>.`)}
+      ${paragraph('Event Staff can use the scanner, view events, and check in guests at the venue.')}
+      ${ctaButton(inviteUrl, 'Create my staff account')}
+      <p style="margin:20px 0 8px;font-family:${fontSans};font-size:13px;line-height:1.6;color:${BRAND.faint};">
+        Or paste this link into your browser:
+      </p>
+      <p style="margin:0 0 16px;padding:12px 14px;background:${BRAND.surface};border:1px solid ${BRAND.border};border-radius:10px;font-family:${fontSans};font-size:12px;line-height:1.5;word-break:break-all;">
+        <a href="${inviteUrl}" style="color:${BRAND.primary};text-decoration:none;font-weight:600;">${inviteUrl}</a>
+      </p>
+      ${paragraph('<span style="font-size:13px;color:' + BRAND.faint + ';">This invite expires in 7 days.</span>')}
+    `,
+  });
+
 module.exports = {
   invitationTemplate,
   registrationConfirmationTemplate,
@@ -281,5 +302,6 @@ module.exports = {
   thankYouTemplate,
   emailVerificationTemplate,
   passwordResetTemplate,
+  staffInviteTemplate,
   escapeHtml,
 };

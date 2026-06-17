@@ -90,6 +90,34 @@ const claimAdmin = asyncHandler(async (req, res) => {
   sendSuccess(res, user, 'You are now the workspace admin');
 });
 
+const promoteAdmin = asyncHandler(async (req, res) => {
+  const user = await authService.promoteUserToAdmin(req.body.email);
+  sendSuccess(res, user, 'User promoted to Admin');
+});
+
+const demoteAdmin = asyncHandler(async (req, res) => {
+  const user = await authService.demoteUserToStaff(req.body.email);
+  sendSuccess(res, user, 'User demoted to Event Staff');
+});
+
+const listTeamMembers = asyncHandler(async (_req, res) => {
+  const team = await authService.listTeamMembers();
+  sendSuccess(res, team);
+});
+
+const createStaffInvite = asyncHandler(async (req, res) => {
+  const invite = await require('../services/staffInviteService').createStaffInvite({
+    email: req.body.email,
+    invitedByUser: req.user,
+  });
+  sendSuccess(res, invite, 'Staff invite sent', 201);
+});
+
+const listStaffInvites = asyncHandler(async (_req, res) => {
+  const invites = await require('../services/staffInviteService').listStaffInvites();
+  sendSuccess(res, invites);
+});
+
 const clearSession = asyncHandler(async (req, res) => {
   authService.clearAuthCookies(res);
   sendSuccess(res, null, 'Session cleared');
@@ -111,4 +139,9 @@ module.exports = {
   validateSession,
   verifyEmail,
   claimAdmin,
+  promoteAdmin,
+  demoteAdmin,
+  listTeamMembers,
+  createStaffInvite,
+  listStaffInvites,
 };

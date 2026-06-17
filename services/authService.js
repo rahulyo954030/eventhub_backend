@@ -9,6 +9,7 @@ const {
 } = require('../utils/jwt');
 const cloudinaryService = require('./cloudinaryService');
 const sessionService = require('./sessionService');
+const staffInviteService = require('./staffInviteService');
 const config = require('../config');
 
 const hashPassword = async (password) => {
@@ -30,12 +31,12 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
 
   res.cookie('accessToken', accessToken, {
     ...cookieOptions,
-    maxAge: 15 * 60 * 1000,
+    maxAge: sessionService.getAccessCookieMaxAge(),
   });
 
   res.cookie('refreshToken', refreshToken, {
     ...cookieOptions,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: sessionService.getRefreshCookieMaxAge(),
   });
 };
 
@@ -80,12 +81,18 @@ const register = async (data) => {
   }
 
   // Bootstrap flow:
-  // - If no Admin exists yet, auto-promote this signup as Admin.
-  // - Otherwise keep default Event Staff unless role is explicitly and validly requested.
-  const adminCount = await User.countDocuments({ role: 'Admin' });
-  let role = adminCount === 0 ? 'Admin' : 'Event Staff';
+  // Treat an Admin as "existing" only when it is active + email verified.
+  // This avoids a common real-world issue: the first signup creates an Admin record,
+  // but never verifies email — then every later signup becomes staff forever.
+  const hasActiveAdmin = (await User.countDocuments({
+    role: 'Admin',
+    active: true,
+    emailVerified: true,
+  })) > 0;
 
-  if (adminCount > 0 && data.role === 'Admin') {
+  let role = hasActiveAdmin ? 'Event Staff' : 'Admin';
+
+  if (hasActiveAdmin && data.role === 'Admin') {
     role = 'Event Staff';
   }
 
@@ -99,6 +106,16 @@ const register = async (data) => {
     active: false,
     authProvider: 'local',
   });
+
+  if (data.inviteToken) {
+    await staffInviteService.consumeInviteForEmail({
+      email: user.email,
+      inviteToken: data.inviteToken,
+      acceptedByUserId: user._id,
+    });
+    user.role = 'Event Staff';
+    await user.save();
+  }
 
   return formatUser(user);
 };
@@ -320,7 +337,7 @@ const validateSession = async (userId, sessionId) => {
 };
 
 const claimAdminIfNone = async (userId) => {
-  const adminCount = await User.countDocuments({ role: 'Admin' });
+  const adminCount = await User.countDocuments({ role: 'Admin', active: true, emailVerified: true });
   if (adminCount > 0) {
     throw ApiError.badRequest('Admin already exists in this workspace');
   }
@@ -335,6 +352,81 @@ const claimAdminIfNone = async (userId) => {
   user.emailVerified = true;
   await user.save();
   return formatUser(user);
+};
+
+const promoteUserToAdmin = async (email) => {
+  const normalizedEmail = (email || '').toLowerCase().trim();
+  if (!normalizedEmail) {
+    throw ApiError.badRequest('Email is required');
+  }
+
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  if (user.role === 'Admin') {
+    throw ApiError.badRequest('User is already an Admin');
+  }
+
+  user.role = 'Admin';
+  user.active = true;
+  user.emailVerified = true;
+  await user.save();
+
+  return formatUser(user);
+};
+
+const demoteUserToStaff = async (email) => {
+  const normalizedEmail = (email || '').toLowerCase().trim();
+  if (!normalizedEmail) {
+    throw ApiError.badRequest('Email is required');
+  }
+
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  if (user.role !== 'Admin') {
+    throw ApiError.badRequest('User is already Event Staff');
+  }
+
+  const adminCount = await User.countDocuments({
+    role: 'Admin',
+    active: true,
+    emailVerified: true,
+  });
+
+  if (adminCount <= 1) {
+    throw ApiError.badRequest('Cannot demote the only admin. Promote another admin first.');
+  }
+
+  user.role = 'Event Staff';
+  await user.save();
+
+  return formatUser(user);
+};
+
+const listTeamMembers = async () => {
+  const users = await User.find()
+    .sort({ role: 1, name: 1, email: 1 })
+    .select('name email role active emailVerified');
+
+  const members = users.map((u) => ({
+    id: u._id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    active: u.active,
+    emailVerified: u.emailVerified,
+  }));
+
+  const adminCount = members.filter(
+    (m) => m.role === 'Admin' && m.active && m.emailVerified
+  ).length;
+
+  return { members, adminCount };
 };
 
 module.exports = {
@@ -356,4 +448,7 @@ module.exports = {
   generateEmailVerification,
   verifyEmail,
   claimAdminIfNone,
+  promoteUserToAdmin,
+  demoteUserToStaff,
+  listTeamMembers,
 };

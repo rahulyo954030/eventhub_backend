@@ -7,11 +7,25 @@ const REFRESH_PREFIX = 'refresh:';
 
 const getSessionTTL = () => {
   const expiresIn = config.jwt.refreshExpiresIn;
-  if (expiresIn.endsWith('d')) return parseInt(expiresIn) * 86400;
-  if (expiresIn.endsWith('h')) return parseInt(expiresIn) * 3600;
-  if (expiresIn.endsWith('m')) return parseInt(expiresIn) * 60;
+  if (expiresIn.endsWith('d')) return parseInt(expiresIn, 10) * 86400;
+  if (expiresIn.endsWith('h')) return parseInt(expiresIn, 10) * 3600;
+  if (expiresIn.endsWith('m')) return parseInt(expiresIn, 10) * 60;
   return 604800;
 };
+
+const parseDurationToMs = (value, fallbackMs) => {
+  if (!value) return fallbackMs;
+  if (value.endsWith('d')) return parseInt(value, 10) * 86400000;
+  if (value.endsWith('h')) return parseInt(value, 10) * 3600000;
+  if (value.endsWith('m')) return parseInt(value, 10) * 60000;
+  return fallbackMs;
+};
+
+const getAccessCookieMaxAge = () =>
+  parseDurationToMs(config.jwt.accessExpiresIn, 15 * 60 * 1000);
+
+const getRefreshCookieMaxAge = () =>
+  parseDurationToMs(config.jwt.refreshExpiresIn, 7 * 24 * 60 * 60 * 1000);
 
 const createSession = async (userId) => {
   const redis = getRedisClient();
@@ -32,6 +46,19 @@ const validateSession = async (sessionId) => {
   const redis = getRedisClient();
   const session = await redis.get(`${SESSION_PREFIX}${sessionId}`);
   return !!session;
+};
+
+const restoreSession = async (sessionId, userId) => {
+  if (!sessionId || !userId) return false;
+  const redis = getRedisClient();
+  const ttl = getSessionTTL();
+  const sessionData = JSON.stringify({
+    userId,
+    createdAt: new Date().toISOString(),
+    restored: true,
+  });
+  await redis.setEx(`${SESSION_PREFIX}${sessionId}`, ttl, sessionData);
+  return true;
 };
 
 const destroySession = async (sessionId) => {
@@ -63,9 +90,12 @@ const destroyAllUserSessions = async (userId) => {
 module.exports = {
   createSession,
   validateSession,
+  restoreSession,
   destroySession,
   storeRefreshToken,
   getRefreshToken,
   removeRefreshToken,
   destroyAllUserSessions,
+  getAccessCookieMaxAge,
+  getRefreshCookieMaxAge,
 };

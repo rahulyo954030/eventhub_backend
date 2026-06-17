@@ -26,14 +26,14 @@ const authenticate = asyncHandler(async (req, res, next) => {
     throw ApiError.unauthorized('Invalid access token');
   }
 
-  const sessionValid = await sessionService.validateSession(decoded.sessionId);
-  if (!sessionValid) {
-    throw ApiError.unauthorized('Session expired or invalid');
-  }
-
   const user = await User.findById(decoded.userId);
   if (!user || !user.active) {
     throw ApiError.unauthorized('User not found or inactive');
+  }
+
+  const sessionValid = await sessionService.validateSession(decoded.sessionId);
+  if (!sessionValid) {
+    await sessionService.restoreSession(decoded.sessionId, decoded.userId);
   }
 
   req.user = user;

@@ -7,6 +7,7 @@ const {
   thankYouTemplate,
   emailVerificationTemplate,
   passwordResetTemplate,
+  staffInviteTemplate,
 } = require('./emailTemplates');
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
@@ -161,6 +162,15 @@ const sendPasswordResetEmail = async (email, resetUrl) => {
   return result;
 };
 
+const sendStaffInviteEmail = async ({ to, inviterName, inviteUrl }) => {
+  const result = await sendEmail({
+    to,
+    subject: `${inviterName} invited you to EventHub`,
+    htmlContent: staffInviteTemplate({ inviterName, inviteUrl }),
+  });
+  return result;
+};
+
 module.exports = {
   sendEmail,
   sendInvitationEmail,
@@ -169,5 +179,6 @@ module.exports = {
   sendThankYouEmail,
   sendEmailVerification,
   sendPasswordResetEmail,
+  sendStaffInviteEmail,
   logEmail,
 };

@@ -2,7 +2,7 @@ const express = require('express');
 const authController = require('../controllers/authController');
 const validate = require('../middleware/validate');
 const avatarUpload = require('../middleware/avatarUpload');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 const {
   registerValidation,
@@ -12,6 +12,8 @@ const {
   changePasswordValidation,
   updateProfileValidation,
   verifyEmailValidation,
+  staffInviteValidation,
+  promoteAdminValidation,
 } = require('../validators/authValidator');
 
 const router = express.Router();
@@ -253,6 +255,13 @@ router.post('/verify-email', verifyEmailValidation, validate, authController.ver
  *         description: Admin already exists
  */
 router.post('/claim-admin', authenticate, authController.claimAdmin);
+
+router.post('/promote-admin', authenticate, authorize('Admin'), promoteAdminValidation, validate, authController.promoteAdmin);
+router.post('/demote-admin', authenticate, authorize('Admin'), promoteAdminValidation, validate, authController.demoteAdmin);
+router.get('/team-members', authenticate, authorize('Admin'), authController.listTeamMembers);
+
+router.get('/staff-invites', authenticate, authorize('Admin'), authController.listStaffInvites);
+router.post('/staff-invites', authenticate, authorize('Admin'), staffInviteValidation, validate, authController.createStaffInvite);
 
 /**
  * @swagger

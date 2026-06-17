@@ -6,6 +6,7 @@ const registerValidation = [
   body('password')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters'),
+  body('inviteToken').optional().isString().trim().notEmpty().withMessage('Invite token must be a non-empty string'),
 ];
 
 const loginValidation = [
@@ -39,6 +40,14 @@ const verifyEmailValidation = [
   body('token').notEmpty().withMessage('Verification token is required'),
 ];
 
+const staffInviteValidation = [
+  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+];
+
+const promoteAdminValidation = [
+  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+];
+
 module.exports = {
   registerValidation,
   loginValidation,
@@ -47,4 +56,6 @@ module.exports = {
   changePasswordValidation,
   updateProfileValidation,
   verifyEmailValidation,
+  staffInviteValidation,
+  promoteAdminValidation,
 };
