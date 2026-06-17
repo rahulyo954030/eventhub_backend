@@ -1,10 +1,29 @@
 require('dotenv').config();
 
+const normalizeUrl = (url, fallback) => {
+  const value = (url || fallback || '').trim().replace(/\/$/, '');
+  if (!value) return fallback;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  return `https://${value}`;
+};
+
+const frontendUrl = normalizeUrl(process.env.FRONTEND_URL, 'http://localhost:3000');
+const backendUrl = normalizeUrl(process.env.BACKEND_URL, 'http://localhost:5000');
+
+const isCrossOriginDeployment = (() => {
+  try {
+    return new URL(frontendUrl).origin !== new URL(backendUrl).origin;
+  } catch {
+    return false;
+  }
+})();
+
 module.exports = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT, 10) || 5000,
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
-  backendUrl: process.env.BACKEND_URL || 'http://localhost:5000',
+  frontendUrl,
+  backendUrl,
+  isCrossOriginDeployment,
   mongodb: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/event_management',
   },

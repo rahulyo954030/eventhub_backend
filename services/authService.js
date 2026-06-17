@@ -24,7 +24,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
   const cookieOptions = {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
+    sameSite: isProduction && config.isCrossOriginDeployment ? 'none' : isProduction ? 'strict' : 'lax',
     path: '/',
   };
 
@@ -40,8 +40,16 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
 };
 
 const clearAuthCookies = (res) => {
-  res.clearCookie('accessToken', { path: '/' });
-  res.clearCookie('refreshToken', { path: '/' });
+  const isProduction = config.env === 'production';
+  const cookieOptions = {
+    path: '/',
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction && config.isCrossOriginDeployment ? 'none' : isProduction ? 'strict' : 'lax',
+  };
+
+  res.clearCookie('accessToken', cookieOptions);
+  res.clearCookie('refreshToken', cookieOptions);
 };
 
 const generateTokens = async (user) => {
