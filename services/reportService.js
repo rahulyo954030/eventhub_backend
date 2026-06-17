@@ -4,9 +4,17 @@ const Attendee = require('../models/Attendee');
 const EmailLog = require('../models/EmailLog');
 const ApiError = require('../utils/ApiError');
 
-const buildAttendeeQuery = (filters) => {
-  const query = {};
-  if (filters.eventId) query.eventId = filters.eventId;
+const buildAttendeeQuery = async (filters, workspaceId) => {
+  const eventIds = await Event.find({ workspaceId }).distinct('_id');
+  const query = { eventId: { $in: eventIds } };
+
+  if (filters.eventId) {
+    if (!eventIds.some((id) => id.toString() === filters.eventId)) {
+      throw ApiError.forbidden('Access denied');
+    }
+    query.eventId = filters.eventId;
+  }
+
   if (filters.invitationStatus) query.invitationStatus = filters.invitationStatus;
   if (filters.registrationStatus) query.registrationStatus = filters.registrationStatus;
   if (filters.attendanceStatus) query.attendanceStatus = filters.attendanceStatus;
@@ -22,8 +30,8 @@ const buildAttendeeQuery = (filters) => {
   return query;
 };
 
-const getEventReport = async (filters) => {
-  const query = {};
+const getEventReport = async (filters, workspaceId) => {
+  const query = { workspaceId };
   if (filters.status) query.status = filters.status;
   if (filters.startDate || filters.endDate) {
     query.eventDate = {};
@@ -53,8 +61,8 @@ const getEventReport = async (filters) => {
   }));
 };
 
-const getAttendeeReport = async (filters) => {
-  const query = buildAttendeeQuery(filters);
+const getAttendeeReport = async (filters, workspaceId) => {
+  const query = await buildAttendeeQuery(filters, workspaceId);
   const attendees = await Attendee.find(query)
     .populate('eventId', 'name')
     .sort({ createdAt: -1 });
@@ -73,8 +81,8 @@ const getAttendeeReport = async (filters) => {
   }));
 };
 
-const getRegistrationReport = async (filters) => {
-  const query = buildAttendeeQuery(filters);
+const getRegistrationReport = async (filters, workspaceId) => {
+  const query = await buildAttendeeQuery(filters, workspaceId);
   query.registrationStatus = filters.registrationStatus || 'confirmed';
   const attendees = await Attendee.find(query)
     .populate('eventId', 'name eventDate')
@@ -94,8 +102,8 @@ const getRegistrationReport = async (filters) => {
   }));
 };
 
-const getAttendanceReport = async (filters) => {
-  const query = buildAttendeeQuery(filters);
+const getAttendanceReport = async (filters, workspaceId) => {
+  const query = await buildAttendeeQuery(filters, workspaceId);
   query.attendanceStatus = 'checked_in';
   const attendees = await Attendee.find(query)
     .populate('eventId', 'name eventDate venue')
@@ -139,25 +147,25 @@ const exportToExcel = (data, sheetName = 'Report') => {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 };
 
-const generateReport = async (reportType, filters, format) => {
+const generateReport = async (reportType, filters, format, workspaceId) => {
   let data;
   let filename;
 
   switch (reportType) {
     case 'events':
-      data = await getEventReport(filters);
+      data = await getEventReport(filters, workspaceId);
       filename = 'event-report';
       break;
     case 'attendees':
-      data = await getAttendeeReport(filters);
+      data = await getAttendeeReport(filters, workspaceId);
       filename = 'attendee-report';
       break;
     case 'registrations':
-      data = await getRegistrationReport(filters);
+      data = await getRegistrationReport(filters, workspaceId);
       filename = 'registration-report';
       break;
     case 'attendance':
-      data = await getAttendanceReport(filters);
+      data = await getAttendanceReport(filters, workspaceId);
       filename = 'attendance-report';
       break;
     default:

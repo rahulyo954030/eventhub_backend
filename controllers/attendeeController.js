@@ -2,15 +2,18 @@ const csv = require('csv-parser');
 const XLSX = require('xlsx');
 const { Readable } = require('stream');
 const attendeeService = require('../services/attendeeService');
+const { getWorkspaceId } = require('../utils/workspace');
 const { asyncHandler, sendSuccess, sendPaginated, parsePagination } = require('../utils/helpers');
 const ApiError = require('../utils/ApiError');
 
 const createAttendee = asyncHandler(async (req, res) => {
-  const attendee = await attendeeService.createAttendee(req.params.eventId, req.body);
+  const workspaceId = getWorkspaceId(req.user);
+  const attendee = await attendeeService.createAttendee(req.params.eventId, req.body, workspaceId);
   sendSuccess(res, attendee, 'Attendee added', 201);
 });
 
 const getAttendees = asyncHandler(async (req, res) => {
+  const workspaceId = getWorkspaceId(req.user);
   const pagination = parsePagination(req.query);
   const filters = {
     search: req.query.search,
@@ -18,42 +21,49 @@ const getAttendees = asyncHandler(async (req, res) => {
     registrationStatus: req.query.registrationStatus,
     attendanceStatus: req.query.attendanceStatus,
   };
-  const result = await attendeeService.getAttendees(req.params.eventId, filters, pagination);
+  const result = await attendeeService.getAttendees(req.params.eventId, filters, pagination, workspaceId);
   sendPaginated(res, result.attendees, result.pagination);
 });
 
 const getAttendee = asyncHandler(async (req, res) => {
-  const attendee = await attendeeService.getAttendeeById(req.params.id);
+  const workspaceId = getWorkspaceId(req.user);
+  const attendee = await attendeeService.getAttendeeById(req.params.id, workspaceId);
   sendSuccess(res, attendee);
 });
 
 const updateAttendee = asyncHandler(async (req, res) => {
-  const attendee = await attendeeService.updateAttendee(req.params.id, req.body);
+  const workspaceId = getWorkspaceId(req.user);
+  const attendee = await attendeeService.updateAttendee(req.params.id, req.body, workspaceId);
   sendSuccess(res, attendee, 'Attendee updated');
 });
 
 const deleteAttendee = asyncHandler(async (req, res) => {
-  await attendeeService.deleteAttendee(req.params.id);
+  const workspaceId = getWorkspaceId(req.user);
+  await attendeeService.deleteAttendee(req.params.id, workspaceId);
   sendSuccess(res, null, 'Attendee deleted');
 });
 
 const sendInvitation = asyncHandler(async (req, res) => {
-  const result = await attendeeService.sendInvitation(req.params.id);
+  const workspaceId = getWorkspaceId(req.user);
+  const result = await attendeeService.sendInvitation(req.params.id, workspaceId);
   sendSuccess(res, result, result.success ? 'Invitation sent' : 'Failed to send invitation');
 });
 
 const sendBulkInvitations = asyncHandler(async (req, res) => {
-  const result = await attendeeService.sendBulkInvitations(req.params.eventId);
+  const workspaceId = getWorkspaceId(req.user);
+  const result = await attendeeService.sendBulkInvitations(req.params.eventId, workspaceId);
   sendSuccess(res, result, 'Bulk invitations processed');
 });
 
 const sendBulkReminders = asyncHandler(async (req, res) => {
-  const result = await attendeeService.sendBulkReminders(req.params.eventId);
+  const workspaceId = getWorkspaceId(req.user);
+  const result = await attendeeService.sendBulkReminders(req.params.eventId, workspaceId);
   sendSuccess(res, result, 'Bulk reminders processed');
 });
 
 const sendBulkThankYou = asyncHandler(async (req, res) => {
-  const result = await attendeeService.sendBulkThankYou(req.params.eventId);
+  const workspaceId = getWorkspaceId(req.user);
+  const result = await attendeeService.sendBulkThankYou(req.params.eventId, workspaceId);
   sendSuccess(res, result, 'Bulk thank-you emails processed');
 });
 
@@ -112,7 +122,8 @@ const bulkUpload = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('No valid attendees found in file');
   }
 
-  const result = await attendeeService.bulkCreateAttendees(req.params.eventId, attendees);
+  const workspaceId = getWorkspaceId(req.user);
+  const result = await attendeeService.bulkCreateAttendees(req.params.eventId, attendees, workspaceId);
   sendSuccess(res, result, 'Bulk upload completed');
 });
 

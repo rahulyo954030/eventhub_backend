@@ -5,8 +5,9 @@ const ApiError = require('../utils/ApiError');
 const qrService = require('./qrService');
 const eventService = require('./eventService');
 const cacheService = require('./cacheService');
+const { getWorkspaceId, assertWorkspaceMatch } = require('../utils/workspace');
 
-const checkIn = async (scannedData, staffUserId) => {
+const checkIn = async (scannedData, staffUser) => {
   let qrPayload;
   try {
     qrPayload = await qrService.validateQRCode(scannedData);
@@ -31,6 +32,9 @@ const checkIn = async (scannedData, staffUserId) => {
   if (!event) {
     throw ApiError.badRequest('Invalid QR Code');
   }
+
+  const staffWorkspaceId = getWorkspaceId(staffUser);
+  assertWorkspaceMatch(staffWorkspaceId, event.workspaceId);
 
   if (eventService.isEventExpired(event)) {
     throw ApiError.badRequest('Event Expired');
@@ -58,7 +62,7 @@ const checkIn = async (scannedData, staffUserId) => {
 
   attendee.attendanceStatus = 'checked_in';
   attendee.checkedInAt = new Date();
-  attendee.checkedInBy = staffUserId;
+  attendee.checkedInBy = staffUser._id;
   await attendee.save();
 
   await cacheService.invalidateQR(attendee.qrToken);

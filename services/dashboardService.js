@@ -3,9 +3,16 @@ const Attendee = require('../models/Attendee');
 const EmailLog = require('../models/EmailLog');
 const cacheService = require('./cacheService');
 
-const getDashboardData = async (userId) => {
-  const cached = await cacheService.getDashboard(userId);
+const getWorkspaceEventIds = async (workspaceId) => {
+  return Event.find({ workspaceId }).distinct('_id');
+};
+
+const getDashboardData = async (workspaceId) => {
+  const cached = await cacheService.getDashboard(workspaceId);
   if (cached) return cached;
+
+  const eventIds = await getWorkspaceEventIds(workspaceId);
+  const attendeeScope = eventIds.length > 0 ? { eventId: { $in: eventIds } } : { eventId: null };
 
   const [
     totalEvents,
@@ -18,15 +25,15 @@ const getDashboardData = async (userId) => {
     attendanceTrend,
     eventStatistics,
   ] = await Promise.all([
-    Event.countDocuments({ status: { $ne: 'archived' } }),
-    Attendee.countDocuments({ invitationStatus: { $ne: 'Cancelled' } }),
-    Attendee.countDocuments({ registrationStatus: 'confirmed' }),
-    Attendee.countDocuments({ attendanceStatus: 'checked_in' }),
-    getRecentActivities(),
-    getUpcomingEvents(),
-    getRegistrationTrend(),
-    getAttendanceTrend(),
-    getEventStatistics(),
+    Event.countDocuments({ workspaceId, status: { $ne: 'archived' } }),
+    Attendee.countDocuments({ ...attendeeScope, invitationStatus: { $ne: 'Cancelled' } }),
+    Attendee.countDocuments({ ...attendeeScope, registrationStatus: 'confirmed' }),
+    Attendee.countDocuments({ ...attendeeScope, attendanceStatus: 'checked_in' }),
+    getRecentActivities(eventIds),
+    getUpcomingEvents(workspaceId),
+    getRegistrationTrend(eventIds),
+    getAttendanceTrend(eventIds),
+    getEventStatistics(workspaceId),
   ]);
 
   const attendancePercentage =
@@ -49,23 +56,27 @@ const getDashboardData = async (userId) => {
     upcomingEvents,
   };
 
-  await cacheService.setDashboard(userId, data);
+  await cacheService.setDashboard(workspaceId, data);
   return data;
 };
 
-const getRecentActivities = async () => {
+const getRecentActivities = async (eventIds) => {
+  if (!eventIds.length) return [];
+
+  const attendeeScope = { eventId: { $in: eventIds } };
+
   const [recentRegistrations, recentCheckIns, recentEmails] = await Promise.all([
-    Attendee.find({ registrationStatus: 'confirmed' })
+    Attendee.find({ ...attendeeScope, registrationStatus: 'confirmed' })
       .sort({ updatedAt: -1 })
       .limit(5)
       .populate('eventId', 'name')
       .select('fullName email eventId updatedAt'),
-    Attendee.find({ attendanceStatus: 'checked_in' })
+    Attendee.find({ ...attendeeScope, attendanceStatus: 'checked_in' })
       .sort({ checkedInAt: -1 })
       .limit(5)
       .populate('eventId', 'name')
       .select('fullName eventId checkedInAt'),
-    EmailLog.find({ status: 'sent' })
+    EmailLog.find({ eventId: { $in: eventIds }, status: 'sent' })
       .sort({ sentAt: -1 })
       .limit(5)
       .populate('attendeeId', 'fullName email')
@@ -103,9 +114,10 @@ const getRecentActivities = async () => {
     .slice(0, 10);
 };
 
-const getUpcomingEvents = async () => {
+const getUpcomingEvents = async (workspaceId) => {
   const now = new Date();
   return Event.find({
+    workspaceId,
     eventDate: { $gte: now },
     status: 'published',
   })
@@ -114,13 +126,16 @@ const getUpcomingEvents = async () => {
     .select('name venue eventDate eventTime status');
 };
 
-const getRegistrationTrend = async () => {
+const getRegistrationTrend = async (eventIds) => {
+  if (!eventIds.length) return [];
+
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const trend = await Attendee.aggregate([
     {
       $match: {
+        eventId: { $in: eventIds },
         registrationStatus: 'confirmed',
         updatedAt: { $gte: thirtyDaysAgo },
       },
@@ -137,13 +152,16 @@ const getRegistrationTrend = async () => {
   return trend.map((t) => ({ date: t._id, count: t.count }));
 };
 
-const getAttendanceTrend = async () => {
+const getAttendanceTrend = async (eventIds) => {
+  if (!eventIds.length) return [];
+
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const trend = await Attendee.aggregate([
     {
       $match: {
+        eventId: { $in: eventIds },
         attendanceStatus: 'checked_in',
         checkedInAt: { $gte: thirtyDaysAgo },
       },
@@ -160,8 +178,8 @@ const getAttendanceTrend = async () => {
   return trend.map((t) => ({ date: t._id, count: t.count }));
 };
 
-const getEventStatistics = async () => {
-  const events = await Event.find({ status: { $ne: 'archived' } })
+const getEventStatistics = async (workspaceId) => {
+  const events = await Event.find({ workspaceId, status: { $ne: 'archived' } })
     .sort({ eventDate: -1 })
     .limit(10)
     .select('name');

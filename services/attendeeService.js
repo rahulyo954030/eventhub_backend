@@ -5,7 +5,17 @@ const config = require('../config');
 const { generateRegistrationToken, generateSecureToken } = require('../utils/token');
 const qrService = require('./qrService');
 const emailService = require('./emailService');
+const eventService = require('./eventService');
 const cacheService = require('./cacheService');
+
+const assertAttendeeInWorkspace = async (attendeeId, workspaceId) => {
+  const attendee = await Attendee.findById(attendeeId);
+  if (!attendee) {
+    throw ApiError.notFound('Attendee not found');
+  }
+  await eventService.assertEventInWorkspace(attendee.eventId, workspaceId);
+  return attendee;
+};
 
 const getQrImageUrl = (registrationToken) =>
   `${config.qr.imageBaseUrl}/api/register/${registrationToken}/qr`;
@@ -20,11 +30,8 @@ const ensureAttendeeQrCode = async (attendee, forceRegenerate = false) => {
   return qrCodeUrl;
 };
 
-const createAttendee = async (eventId, data, sendInvite = true) => {
-  const event = await Event.findById(eventId);
-  if (!event) {
-    throw ApiError.notFound('Event not found');
-  }
+const createAttendee = async (eventId, data, workspaceId, sendInvite = true) => {
+  const event = await eventService.assertEventInWorkspace(eventId, workspaceId);
 
   const existing = await Attendee.findOne({ eventId, email: data.email.toLowerCase() });
   if (existing) {
@@ -62,12 +69,12 @@ const createAttendee = async (eventId, data, sendInvite = true) => {
   return attendee;
 };
 
-const bulkCreateAttendees = async (eventId, attendeesData) => {
+const bulkCreateAttendees = async (eventId, attendeesData, workspaceId) => {
   const results = { created: 0, failed: [], duplicates: 0 };
 
   for (const data of attendeesData) {
     try {
-      await createAttendee(eventId, data, false);
+      await createAttendee(eventId, data, workspaceId, false);
       results.created++;
     } catch (error) {
       if (error.statusCode === 409) {
@@ -82,7 +89,8 @@ const bulkCreateAttendees = async (eventId, attendeesData) => {
   return results;
 };
 
-const getAttendees = async (eventId, filters, pagination) => {
+const getAttendees = async (eventId, filters, pagination, workspaceId) => {
+  await eventService.assertEventInWorkspace(eventId, workspaceId);
   const query = { eventId };
 
   if (filters.search) {
@@ -117,15 +125,18 @@ const getAttendees = async (eventId, filters, pagination) => {
   };
 };
 
-const getAttendeeById = async (attendeeId) => {
+const getAttendeeById = async (attendeeId, workspaceId) => {
   const attendee = await Attendee.findById(attendeeId).populate('eventId');
   if (!attendee) {
     throw ApiError.notFound('Attendee not found');
   }
+  await eventService.assertEventInWorkspace(attendee.eventId, workspaceId);
   return attendee;
 };
 
-const updateAttendee = async (attendeeId, data) => {
+const updateAttendee = async (attendeeId, data, workspaceId) => {
+  await assertAttendeeInWorkspace(attendeeId, workspaceId);
+
   const attendee = await Attendee.findByIdAndUpdate(
     attendeeId,
     {
@@ -145,21 +156,16 @@ const updateAttendee = async (attendeeId, data) => {
   return attendee;
 };
 
-const deleteAttendee = async (attendeeId) => {
-  const attendee = await Attendee.findByIdAndDelete(attendeeId);
-  if (!attendee) {
-    throw ApiError.notFound('Attendee not found');
-  }
+const deleteAttendee = async (attendeeId, workspaceId) => {
+  const attendee = await assertAttendeeInWorkspace(attendeeId, workspaceId);
+  await Attendee.findByIdAndDelete(attendeeId);
   await cacheService.invalidateQR(attendee.qrToken);
   await cacheService.invalidateAllDashboards();
   return attendee;
 };
 
-const sendInvitation = async (attendeeId) => {
-  const attendee = await Attendee.findById(attendeeId);
-  if (!attendee) {
-    throw ApiError.notFound('Attendee not found');
-  }
+const sendInvitation = async (attendeeId, workspaceId) => {
+  const attendee = await assertAttendeeInWorkspace(attendeeId, workspaceId);
 
   const event = await Event.findById(attendee.eventId);
   if (!event) {
@@ -180,15 +186,12 @@ const sendInvitation = async (attendeeId) => {
   return result;
 };
 
-const sendBulkInvitations = async (eventId) => {
+const sendBulkInvitations = async (eventId, workspaceId) => {
+  const event = await eventService.assertEventInWorkspace(eventId, workspaceId);
   const attendees = await Attendee.find({
     eventId,
     invitationStatus: { $ne: 'Cancelled' },
   });
-  const event = await Event.findById(eventId);
-  if (!event) {
-    throw ApiError.notFound('Event not found');
-  }
 
   const results = { sent: 0, failed: 0 };
   for (const attendee of attendees) {
@@ -212,16 +215,13 @@ const sendBulkInvitations = async (eventId) => {
   return results;
 };
 
-const sendBulkReminders = async (eventId) => {
+const sendBulkReminders = async (eventId, workspaceId) => {
+  const event = await eventService.assertEventInWorkspace(eventId, workspaceId);
   const attendees = await Attendee.find({
     eventId,
     registrationStatus: 'confirmed',
     invitationStatus: { $ne: 'Cancelled' },
   });
-  const event = await Event.findById(eventId);
-  if (!event) {
-    throw ApiError.notFound('Event not found');
-  }
 
   const results = { sent: 0, failed: 0 };
   for (const attendee of attendees) {
@@ -236,15 +236,12 @@ const sendBulkReminders = async (eventId) => {
   return results;
 };
 
-const sendBulkThankYou = async (eventId) => {
+const sendBulkThankYou = async (eventId, workspaceId) => {
+  const event = await eventService.assertEventInWorkspace(eventId, workspaceId);
   const attendees = await Attendee.find({
     eventId,
     attendanceStatus: 'checked_in',
   });
-  const event = await Event.findById(eventId);
-  if (!event) {
-    throw ApiError.notFound('Event not found');
-  }
 
   const results = { sent: 0, failed: 0 };
   for (const attendee of attendees) {

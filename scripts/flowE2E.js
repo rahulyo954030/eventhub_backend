@@ -84,9 +84,11 @@ const main = async () => {
     email,
     password,
     confirmPassword: password,
-    role: 'Admin',
   });
   assertOk(register, 'Register');
+  if (register.data?.data?.role !== 'Admin') {
+    throw new Error(`Expected Admin role on signup, got ${register.data?.data?.role}`);
+  }
   console.log(`Register: ${register.data.message}`);
 
   const loginBeforeVerify = await client.postJson(`${API_BASE}/auth/login`, { email, password });
@@ -110,7 +112,7 @@ const main = async () => {
   assertOk(login, 'Login');
   console.log(`Login after verify: ${login.data.message}`);
 
-  let event = await client.postJson(`${API_BASE}/events`, {
+  const event = await client.postJson(`${API_BASE}/events`, {
     name: `Flow Event ${suffix}`,
     description: 'Automated flow test',
     venue: 'Main Hall',
@@ -120,23 +122,6 @@ const main = async () => {
     organizerEmail: email,
     status: 'draft',
   });
-
-  if (!event.ok && event.status === 403) {
-    console.log('Create event blocked by role; promoting test user to Admin for full-flow test');
-    await User.updateOne({ email }, { $set: { role: 'Admin', active: true, emailVerified: true } });
-    const relogin = await client.postJson(`${API_BASE}/auth/login`, { email, password });
-    assertOk(relogin, 'Re-login after role promotion');
-    event = await client.postJson(`${API_BASE}/events`, {
-      name: `Flow Event ${suffix}`,
-      description: 'Automated flow test',
-      venue: 'Main Hall',
-      eventDate: '2026-12-30',
-      eventTime: '10:00',
-      organizerName: 'Flow QA',
-      organizerEmail: email,
-      status: 'draft',
-    });
-  }
 
   const eventData = assertOk(event, 'Create event').data;
   const eventId = eventData._id;
@@ -236,7 +221,7 @@ const main = async () => {
   console.log('Session validated after refresh');
 
   const dashboard = assertOk(await client.get(`${API_BASE}/dashboard`), 'Dashboard');
-  console.log(`Dashboard fetched: totalEvents=${dashboard.data.totalEvents}`);
+  console.log(`Dashboard fetched: totalEvents=${dashboard.data.cards?.totalEvents}`);
 
   const reportEvents = assertOk(await client.get(`${API_BASE}/reports/events?format=json`), 'Events report');
   const reportAttendees = assertOk(

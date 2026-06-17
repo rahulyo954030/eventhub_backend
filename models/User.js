@@ -25,7 +25,12 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: ['Admin', 'Event Staff'],
-      default: 'Event Staff',
+      default: 'Admin',
+    },
+    workspaceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
     },
     authProvider: {
       type: String,

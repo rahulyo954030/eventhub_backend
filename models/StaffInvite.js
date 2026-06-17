@@ -19,6 +19,12 @@ const staffInviteSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    workspaceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     status: {
       type: String,
       enum: ['pending', 'accepted', 'expired'],

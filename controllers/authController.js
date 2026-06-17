@@ -1,5 +1,6 @@
 const authService = require('../services/authService');
 const emailService = require('../services/emailService');
+const { getWorkspaceId } = require('../utils/workspace');
 const { asyncHandler, sendSuccess } = require('../utils/helpers');
 
 const register = asyncHandler(async (req, res) => {
@@ -91,17 +92,20 @@ const claimAdmin = asyncHandler(async (req, res) => {
 });
 
 const promoteAdmin = asyncHandler(async (req, res) => {
-  const user = await authService.promoteUserToAdmin(req.body.email);
+  const workspaceId = getWorkspaceId(req.user);
+  const user = await authService.promoteUserToAdmin(req.body.email, workspaceId);
   sendSuccess(res, user, 'User promoted to Admin');
 });
 
 const demoteAdmin = asyncHandler(async (req, res) => {
-  const user = await authService.demoteUserToStaff(req.body.email);
+  const workspaceId = getWorkspaceId(req.user);
+  const user = await authService.demoteUserToStaff(req.body.email, workspaceId);
   sendSuccess(res, user, 'User demoted to Event Staff');
 });
 
-const listTeamMembers = asyncHandler(async (_req, res) => {
-  const team = await authService.listTeamMembers();
+const listTeamMembers = asyncHandler(async (req, res) => {
+  const workspaceId = getWorkspaceId(req.user);
+  const team = await authService.listTeamMembers(workspaceId);
   sendSuccess(res, team);
 });
 
@@ -113,8 +117,9 @@ const createStaffInvite = asyncHandler(async (req, res) => {
   sendSuccess(res, invite, 'Staff invite sent', 201);
 });
 
-const listStaffInvites = asyncHandler(async (_req, res) => {
-  const invites = await require('../services/staffInviteService').listStaffInvites();
+const listStaffInvites = asyncHandler(async (req, res) => {
+  const workspaceId = getWorkspaceId(req.user);
+  const invites = await require('../services/staffInviteService').listStaffInvites(workspaceId);
   sendSuccess(res, invites);
 });
 

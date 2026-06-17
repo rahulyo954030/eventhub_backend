@@ -11,6 +11,7 @@ const cloudinaryService = require('./cloudinaryService');
 const sessionService = require('./sessionService');
 const staffInviteService = require('./staffInviteService');
 const config = require('../config');
+const { getWorkspaceId } = require('../utils/workspace');
 
 const hashPassword = async (password) => {
   return bcrypt.hash(password, 12);
@@ -80,24 +81,22 @@ const register = async (data) => {
     throw ApiError.conflict('Email already registered');
   }
 
-  // Bootstrap flow:
-  // Treat an Admin as "existing" only when it is active + email verified.
-  // This avoids a common real-world issue: the first signup creates an Admin record,
-  // but never verifies email — then every later signup becomes staff forever.
-  const hasActiveAdmin = (await User.countDocuments({
-    role: 'Admin',
-    active: true,
-    emailVerified: true,
-  })) > 0;
+  let role;
+  let workspaceId;
 
-  let role = hasActiveAdmin ? 'Event Staff' : 'Admin';
-
-  if (hasActiveAdmin && data.role === 'Admin') {
+  if (data.inviteToken) {
+    const invite = await staffInviteService.validateInviteForEmail({
+      email: data.email,
+      inviteToken: data.inviteToken,
+    });
     role = 'Event Staff';
+    workspaceId = invite.workspaceId;
+  } else {
+    role = 'Admin';
   }
 
   const hashedPassword = await hashPassword(data.password);
-  const user = await User.create({
+  const userPayload = {
     name: data.name,
     email: data.email.toLowerCase(),
     password: hashedPassword,
@@ -105,7 +104,18 @@ const register = async (data) => {
     emailVerified: false,
     active: false,
     authProvider: 'local',
-  });
+  };
+
+  if (workspaceId) {
+    userPayload.workspaceId = workspaceId;
+  }
+
+  const user = await User.create(userPayload);
+
+  if (role === 'Admin') {
+    user.workspaceId = user._id;
+    await user.save();
+  }
 
   if (data.inviteToken) {
     await staffInviteService.consumeInviteForEmail({
@@ -113,8 +123,6 @@ const register = async (data) => {
       inviteToken: data.inviteToken,
       acceptedByUserId: user._id,
     });
-    user.role = 'Event Staff';
-    await user.save();
   }
 
   return formatUser(user);
@@ -337,32 +345,42 @@ const validateSession = async (userId, sessionId) => {
 };
 
 const claimAdminIfNone = async (userId) => {
-  const adminCount = await User.countDocuments({ role: 'Admin', active: true, emailVerified: true });
-  if (adminCount > 0) {
-    throw ApiError.badRequest('Admin already exists in this workspace');
-  }
-
   const user = await User.findById(userId);
   if (!user) {
     throw ApiError.notFound('User not found');
   }
 
+  const workspaceId = getWorkspaceId(user);
+  const adminCount = await User.countDocuments({
+    role: 'Admin',
+    active: true,
+    emailVerified: true,
+    workspaceId,
+  });
+
+  if (adminCount > 0) {
+    throw ApiError.badRequest('Admin already exists in this workspace');
+  }
+
   user.role = 'Admin';
   user.active = true;
   user.emailVerified = true;
+  if (!user.workspaceId) {
+    user.workspaceId = user._id;
+  }
   await user.save();
   return formatUser(user);
 };
 
-const promoteUserToAdmin = async (email) => {
+const promoteUserToAdmin = async (email, workspaceId) => {
   const normalizedEmail = (email || '').toLowerCase().trim();
   if (!normalizedEmail) {
     throw ApiError.badRequest('Email is required');
   }
 
-  const user = await User.findOne({ email: normalizedEmail });
+  const user = await User.findOne({ email: normalizedEmail, workspaceId });
   if (!user) {
-    throw ApiError.notFound('User not found');
+    throw ApiError.notFound('User not found in your workspace');
   }
 
   if (user.role === 'Admin') {
@@ -377,15 +395,15 @@ const promoteUserToAdmin = async (email) => {
   return formatUser(user);
 };
 
-const demoteUserToStaff = async (email) => {
+const demoteUserToStaff = async (email, workspaceId) => {
   const normalizedEmail = (email || '').toLowerCase().trim();
   if (!normalizedEmail) {
     throw ApiError.badRequest('Email is required');
   }
 
-  const user = await User.findOne({ email: normalizedEmail });
+  const user = await User.findOne({ email: normalizedEmail, workspaceId });
   if (!user) {
-    throw ApiError.notFound('User not found');
+    throw ApiError.notFound('User not found in your workspace');
   }
 
   if (user.role !== 'Admin') {
@@ -396,6 +414,7 @@ const demoteUserToStaff = async (email) => {
     role: 'Admin',
     active: true,
     emailVerified: true,
+    workspaceId,
   });
 
   if (adminCount <= 1) {
@@ -408,8 +427,8 @@ const demoteUserToStaff = async (email) => {
   return formatUser(user);
 };
 
-const listTeamMembers = async () => {
-  const users = await User.find()
+const listTeamMembers = async (workspaceId) => {
+  const users = await User.find({ workspaceId })
     .sort({ role: 1, name: 1, email: 1 })
     .select('name email role active emailVerified');
 

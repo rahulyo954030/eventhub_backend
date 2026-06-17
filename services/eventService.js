@@ -1,19 +1,30 @@
 const Event = require('../models/Event');
 const Attendee = require('../models/Attendee');
 const ApiError = require('../utils/ApiError');
+const { assertWorkspaceMatch } = require('../utils/workspace');
 const cacheService = require('./cacheService');
 
-const createEvent = async (data, userId) => {
+const assertEventInWorkspace = async (eventId, workspaceId) => {
+  const event = await Event.findById(eventId);
+  if (!event) {
+    throw ApiError.notFound('Event not found');
+  }
+  assertWorkspaceMatch(workspaceId, event.workspaceId);
+  return event;
+};
+
+const createEvent = async (data, userId, workspaceId) => {
   const event = await Event.create({
     ...data,
     createdBy: userId,
+    workspaceId,
   });
   await cacheService.invalidateAllDashboards();
   return event;
 };
 
-const getEvents = async (filters, pagination) => {
-  const query = {};
+const getEvents = async (filters, pagination, workspaceId) => {
+  const query = { workspaceId };
 
   if (filters.search) {
     query.$text = { $search: filters.search };
@@ -54,15 +65,18 @@ const getEvents = async (filters, pagination) => {
   };
 };
 
-const getEventById = async (eventId) => {
+const getEventById = async (eventId, workspaceId) => {
   const event = await Event.findById(eventId).populate('createdBy', 'name email');
   if (!event) {
     throw ApiError.notFound('Event not found');
   }
+  assertWorkspaceMatch(workspaceId, event.workspaceId);
   return event;
 };
 
-const updateEvent = async (eventId, data) => {
+const updateEvent = async (eventId, data, workspaceId) => {
+  await assertEventInWorkspace(eventId, workspaceId);
+
   const event = await Event.findByIdAndUpdate(eventId, data, {
     new: true,
     runValidators: true,
@@ -76,7 +90,9 @@ const updateEvent = async (eventId, data) => {
   return event;
 };
 
-const deleteEvent = async (eventId) => {
+const deleteEvent = async (eventId, workspaceId) => {
+  await assertEventInWorkspace(eventId, workspaceId);
+
   const event = await Event.findByIdAndDelete(eventId);
   if (!event) {
     throw ApiError.notFound('Event not found');
@@ -86,15 +102,17 @@ const deleteEvent = async (eventId) => {
   return event;
 };
 
-const archiveEvent = async (eventId) => {
-  return updateEvent(eventId, { status: 'archived' });
+const archiveEvent = async (eventId, workspaceId) => {
+  return updateEvent(eventId, { status: 'archived' }, workspaceId);
 };
 
-const publishEvent = async (eventId) => {
-  return updateEvent(eventId, { status: 'published' });
+const publishEvent = async (eventId, workspaceId) => {
+  return updateEvent(eventId, { status: 'published' }, workspaceId);
 };
 
-const getEventStats = async (eventId) => {
+const getEventStats = async (eventId, workspaceId) => {
+  await assertEventInWorkspace(eventId, workspaceId);
+
   const [total, registered, checkedIn, invitationsSent] = await Promise.all([
     Attendee.countDocuments({ eventId }),
     Attendee.countDocuments({ eventId, registrationStatus: 'confirmed' }),
@@ -131,4 +149,5 @@ module.exports = {
   publishEvent,
   getEventStats,
   isEventExpired,
+  assertEventInWorkspace,
 };
