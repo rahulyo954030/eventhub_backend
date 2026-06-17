@@ -172,7 +172,7 @@ const greeting = (name) => paragraph(`Dear <strong style="color:${BRAND.ink};fon
 const signOff = (name) =>
   `<p style="margin:28px 0 0;padding-top:20px;border-top:1px solid ${BRAND.border};font-family:${fontSans};font-size:15px;line-height:1.65;color:${BRAND.muted};">Warm regards,<br/><strong style="color:${BRAND.ink};font-weight:600;">${escapeHtml(name)}</strong></p>`;
 
-const invitationTemplate = (attendee, event, registrationUrl, qrImageUrl) =>
+const invitationTemplate = (attendee, event, registrationUrl) =>
   buildEmailLayout({
     preheaderText: `You're invited to ${event.name}. Confirm your spot and get your QR code.`,
     eyebrow: "You're invited",
@@ -183,21 +183,7 @@ const invitationTemplate = (attendee, event, registrationUrl, qrImageUrl) =>
       ${paragraph('You have been invited to join us. Review the event details below and confirm your attendance to receive your personal check-in QR code.')}
       ${eventDetailsCard(event, { showName: true, showDescription: true })}
       ${ctaButton(registrationUrl, 'Confirm my registration')}
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;background:${BRAND.surface};border:1px solid ${BRAND.border};border-radius:14px;">
-        <tr>
-          <td style="padding:26px 24px;text-align:center;">
-            <p style="margin:0 0 6px;font-family:${fontSans};font-size:11px;font-weight:700;color:${BRAND.faint};text-transform:uppercase;letter-spacing:0.12em;">Your check-in QR code</p>
-            <p style="margin:0 0 18px;font-family:${fontSans};font-size:13px;color:${BRAND.muted};">Present this at the venue entrance</p>
-            <img src="${qrImageUrl}" alt="QR Code" width="184" height="184" style="display:block;margin:0 auto;border-radius:12px;border:1px solid ${BRAND.border};background:#fff;padding:8px;" />
-            <p style="margin:16px 0 0;font-family:${fontSans};font-size:12px;line-height:1.55;color:${BRAND.faint};">
-              ${qrImageUrl.startsWith('cid:')
-    ? 'Your QR code is also attached to this email.'
-    : `Image not visible? <a href="${qrImageUrl}" style="color:${BRAND.primary};text-decoration:none;font-weight:700;">Open QR code</a>`}
-            </p>
-          </td>
-        </tr>
-      </table>
-      ${highlightBox('A copy of your QR code is also attached to this email for easy access on your phone.')}
+      ${highlightBox('Your check-in QR code is attached to this email. Open the attachment on your phone and show it at the venue entrance.')}
       ${signOff(event.organizerName)}
     `,
   });

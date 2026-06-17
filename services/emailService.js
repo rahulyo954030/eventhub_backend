@@ -10,9 +10,8 @@ const {
 } = require('./emailTemplates');
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
-const INVITE_QR_CID = 'guest-qr';
 
-const sendEmail = async ({ to, subject, htmlContent, attachments = [], inlineImages = [] }) => {
+const sendEmail = async ({ to, subject, htmlContent, attachments = [] }) => {
   if (!config.brevo.apiKey) {
     console.warn('Brevo API key not configured, email not sent');
     return { success: false, error: 'Email service not configured' };
@@ -31,10 +30,6 @@ const sendEmail = async ({ to, subject, htmlContent, attachments = [], inlineIma
 
     if (attachments.length > 0) {
       payload.attachment = attachments;
-    }
-
-    if (inlineImages.length > 0) {
-      payload.inlineImage = inlineImages;
     }
 
     const response = await fetch(BREVO_API_URL, {
@@ -73,30 +68,22 @@ const logEmail = async (attendeeId, eventId, emailType, status, errorMessage = '
   }
 };
 
-const sendInvitationEmail = async (attendee, event, registrationUrl, qrImageUrl, qrDataUrl) => {
+const sendInvitationEmail = async (attendee, event, registrationUrl, _qrImageUrl, qrDataUrl) => {
   const attachments = [];
-  const inlineImages = [];
-  let qrImageSrc = qrImageUrl;
 
   if (typeof qrDataUrl === 'string' && qrDataUrl.startsWith('data:image/png;base64,')) {
     const base64 = qrDataUrl.replace('data:image/png;base64,', '');
-    inlineImages.push({
-      name: INVITE_QR_CID,
-      content: base64,
-    });
     attachments.push({
       name: `qr-${attendee._id}.png`,
       content: base64,
     });
-    qrImageSrc = `cid:${INVITE_QR_CID}`;
   }
 
   const result = await sendEmail({
     to: attendee.email,
     subject: `You're invited — ${event.name}`,
-    htmlContent: invitationTemplate(attendee, event, registrationUrl, qrImageSrc),
+    htmlContent: invitationTemplate(attendee, event, registrationUrl),
     attachments,
-    inlineImages,
   });
   await logEmail(
     attendee._id,
